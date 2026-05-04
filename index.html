@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="kk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Бейімделген Пазл Ойыны</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0;
+            padding: 10px;
+            text-align: center; 
+            background-color: #f0f4f8; 
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        h2 { margin: 10px 0; font-size: 1.5rem; color: #333; }
+        
+        .controls { 
+            background: white; 
+            padding: 12px; 
+            border-radius: 10px; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.08); 
+            width: 100%;
+            max-width: 500px;
+            margin-bottom: 15px;
+        }
+        .inputs-row {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            margin: 10px 0;
+        }
+        input[type="file"] { width: 100%; max-width: 250px; margin-bottom: 5px; }
+        input[type="number"] { width: 50px; padding: 5px; border: 1px solid #ccc; border-radius: 4px; }
+        
+        button { 
+            padding: 10px 25px; 
+            cursor: pointer; 
+            background-color: #28a745; 
+            color: white; 
+            border: none; 
+            border-radius: 6px; 
+            font-weight: bold;
+            font-size: 1rem;
+            width: 100%;
+            max-width: 200px;
+        }
+        button:hover { background-color: #218838; }
+
+        /* Экранға сыйдыру контейнері */
+        #puzzle-board { 
+            display: grid; 
+            gap: 2px; 
+            background: #ccc; 
+            padding: 4px; 
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            display: none;
+            max-width: 95vw; /* Экранның енінен аспайды */
+            max-height: 60vh; /* Экран биіктігінен аспайды */
+            margin: 0 auto;
+        }
+        .tile { 
+            cursor: grab; 
+            border: 1px solid #fff; 
+            user-select: none;
+            touch-action: none; /* Телефонда экранды жылжытпай, тек пазлды жылжыту үшін */
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+        .tile:active { cursor: grabbing; }
+
+        #win-message {
+            display: none;
+            color: #28a745;
+            font-size: 20px;
+            font-weight: bold;
+            margin: 10px 0;
+            animation: bounce 1s infinite alternate;
+        }
+        @keyframes bounce {
+            from { transform: translateY(0); }
+            to { transform: translateY(-5px); }
+        }
+    </style>
+</head>
+<body>
+
+    <h2>🧩 Пазл Ойыны</h2>
+    <div class="controls">
+        <input type="file" id="imageInput" accept="image/*">
+        <div class="inputs-row">
+            <label>Баған: <input type="number" id="cols" value="3" min="2" max="6"></label>
+            <label>Қатар: <input type="number" id="rows" value="3" min="2" max="6"></label>
+        </div>
+        <button onclick="startGame()">Бастау</button>
+    </div>
+
+    <div id="win-message">Құттықтаймыз! Сен пазлды жинадың! 🎉👏</div>
+    <div id="puzzle-board"></div>
+
+    <script>
+        let draggedTile = null;
+        let touchStartTile = null;
+
+        function startGame() {
+            const input = document.getElementById('imageInput');
+            const file = input.files[0];
+            const cols = parseInt(document.getElementById('cols').value);
+            const rows = parseInt(document.getElementById('rows').value);
+            const board = document.getElementById('puzzle-board');
+            const winMessage = document.getElementById('win-message');
+
+            if (!file) {
+                alert("Ойынды бастау үшін алдымен суретті таңдаңыз!");
+                return;
+            }
+
+            board.innerHTML = "";
+            winMessage.style.display = "none";
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    // Экранның өлшемдеріне қарай суретті сыйдыру (Responsive есептеу)
+                    const maxW = window.innerWidth * 0.92;
+                    const maxH = window.innerHeight * 0.55;
+
+                    let w = img.width;
+                    let h = img.height;
+
+                    // Пропорцияны сақтап, экранға сыйдыру
+                    if (w > maxW) {
+                        h = h * (maxW / w);
+                        w = maxW;
+                    }
+                    if (h > maxH) {
+                        w = w * (maxH / h);
+                        h = maxH;
+                    }
+
+                    const pieceWidth = w / cols;
+                    const pieceHeight = h / rows;
+
+                    board.style.display = "grid";
+                    board.style.gridTemplateColumns = `repeat(${cols}, ${pieceWidth}px)`;
+                    board.style.gridTemplateRows = `repeat(${rows}, ${pieceHeight}px)`;
+
+                    let tiles = [];
+
+                    for (let y = 0; y < rows; y++) {
+                        for (let x = 0; x < cols; x++) {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = pieceWidth;
+                            canvas.height = pieceHeight;
+                            const ctx = canvas.getContext('2d');
+                            
+                            ctx.drawImage(
+                                img, 
+                                (x * img.width / cols), (y * img.height / rows), (img.width / cols), (img.height / rows),
+                                0, 0, pieceWidth, pieceHeight
+                            );
+
+                            const div = document.createElement('div');
+                            div.className = 'tile';
+                            div.draggable = true;
+                            div.dataset.correctIndex = y * cols + x; 
+                            div.style.backgroundImage = `url(${canvas.toDataURL()})`;
+                            div.style.width = `${pieceWidth}px`;
+                            div.style.height = `${pieceHeight}px`;
+
+                            // Компьютерге арналған (Drag & Drop)
+                            div.addEventListener('dragstart', dragStart);
+                            div.addEventListener('dragover', dragOver);
+                            div.addEventListener('drop', drop);
+
+                            // Телефонға арналған (Touch Events)
+                            div.addEventListener('touchstart', touchStart, { passive: false });
+                            div.addEventListener('touchend', touchEnd);
+
+                            tiles.push(div);
+                        }
+                    }
+
+                    // Пазлды араластыру
+                    let shuffled = [...tiles];
+                    do {
+                        shuffled.sort(() => Math.random() - 0.5);
+                    } while (isSolved(shuffled));
+
+                    shuffled.forEach((tile, index) => {
+                        board.appendChild(tile);
+                    });
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // КОМПЬЮТЕР ҮШІН СҮЙРЕЛЕУ
+        function dragStart(e) {
+            draggedTile = this;
+        }
+        function dragOver(e) {
+            e.preventDefault();
+        }
+        function drop(e) {
+            e.preventDefault();
+            if (this === draggedTile) return;
+            swapTiles(this, draggedTile);
+        }
+
+        // СЕНСОРЛЫ ЭКРАН (ТЕЛЕФОН) ҮШІН ТҮРТІП ЖЫЛЖЫТУ
+        function touchStart(e) {
+            if (!touchStartTile) {
+                touchStartTile = this;
+                this.style.border = "2px solid #ff0000"; // Бірінші таңдалғанын белгілеу
+            } else {
+                touchStartTile.style.border = "1px solid #fff";
+                swapTiles(this, touchStartTile);
+                touchStartTile = null;
+            }
+        }
+
+        function touchEnd(e) {
+            e.preventDefault();
+        }
+
+        // Екі пазлдың орнын ауыстыру
+        function swapTiles(tile1, tile2) {
+            const tempBg = tile1.style.backgroundImage;
+            const tempCorrect = tile1.dataset.correctIndex;
+
+            tile1.style.backgroundImage = tile2.style.backgroundImage;
+            tile1.dataset.correctIndex = tile2.dataset.correctIndex;
+
+            tile2.style.backgroundImage = tempBg;
+            tile2.dataset.correctIndex = tempCorrect;
+
+            checkWin();
+        }
+
+        // Жеңісті тексеру
+        function checkWin() {
+            const board = document.getElementById('puzzle-board');
+            const tiles = board.getElementsByClassName('tile');
+            let isWin = true;
+
+            for (let i = 0; i < tiles.length; i++) {
+                if (parseInt(tiles[i].dataset.correctIndex) !== i) {
+                    isWin = false;
+                    break;
+                }
+            }
+
+            if (isWin) {
+                document.getElementById('win-message').style.display = "block";
+            }
+        }
+
+        function isSolved(tiles) {
+            return tiles.every((tile, i) => parseInt(tile.dataset.correctIndex) === i);
+        }
+    </script>
+</body>
+</html>
